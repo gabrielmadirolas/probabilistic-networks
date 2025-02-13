@@ -16,7 +16,7 @@ import torch.nn as nn
 from torch import Tensor
 from torch.nn import Parameter
 
-from .ProbAct import EWTrainableMuSigma 
+from .probact import EWTrainableMuSigma 
 
 
 """
