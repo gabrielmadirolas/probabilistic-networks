@@ -42,7 +42,7 @@ A few notes about features we could add to clean up the below code:
 
 
 def prob_lstm(
-    input_size,
+    num_features,
     hidden_size,
     num_layers,
     bias=True,
@@ -63,7 +63,7 @@ def prob_lstm(
         layer_type,
         batch_first, # Gab: added this
         dropout, # Gab: added this
-        first_layer_args=[ProbLSTMCell, input_size, hidden_size],
+        first_layer_args=[ProbLSTMCell, num_features, hidden_size],
         other_layer_args=[ProbLSTMCell, hidden_size * dirs, hidden_size],
     )
 
@@ -71,7 +71,7 @@ def prob_lstm(
  # Gab: my version of script_lstm
 
 def my_lstm(
-    input_size,
+    num_features,
     hidden_size,
     num_layers,
     bias=True,
@@ -92,7 +92,7 @@ def my_lstm(
         layer_type,
         batch_first, # Gab: added this
         dropout, # Gab: added this
-        first_layer_args=[LSTMCell, input_size, hidden_size],
+        first_layer_args=[LSTMCell, num_features, hidden_size],
         other_layer_args=[LSTMCell, hidden_size * dirs, hidden_size],
     )
 
@@ -100,7 +100,7 @@ def my_lstm(
 # Old version of the above function
 '''
 def my_lstm(
-    input_size,
+    num_features,
     hidden_size,
     num_layers,
     bias=True,
@@ -132,14 +132,14 @@ def my_lstm(
         num_layers,
         layer_type,
         batch_first, # Gab: added this
-        first_layer_args=[LSTMCell, input_size, hidden_size],
+        first_layer_args=[LSTMCell, num_features, hidden_size],
         other_layer_args=[LSTMCell, hidden_size * dirs, hidden_size],
     )
 '''
     
 
 def script_lstm(
-    input_size,
+    num_features,
     hidden_size,
     num_layers,
     bias=True,
@@ -169,13 +169,13 @@ def script_lstm(
     return stack_type(
         num_layers,
         layer_type,
-        first_layer_args=[LSTMCell, input_size, hidden_size],
+        first_layer_args=[LSTMCell, num_features, hidden_size],
         other_layer_args=[LSTMCell, hidden_size * dirs, hidden_size],
     )
 
 
 def script_lnlstm(
-    input_size,
+    num_features,
     hidden_size,
     num_layers,
     bias=True,
@@ -205,7 +205,7 @@ def script_lnlstm(
         layer_type,
         first_layer_args=[
             LayerNormLSTMCell,
-            input_size,
+            num_features,
             hidden_size,
             decompose_layernorm,
         ],
@@ -226,11 +226,11 @@ def reverse(lst: List[Tensor]) -> List[Tensor]:
 
 
 class ProbLSTMCell(jit.ScriptModule):
-    def __init__(self, input_size, hidden_size):
+    def __init__(self, num_features, hidden_size):
         super().__init__()
-        self.input_size = input_size
+        self.num_features = num_features
         self.hidden_size = hidden_size
-        self.weight_ih = Parameter(torch.randn(4 * hidden_size, input_size))
+        self.weight_ih = Parameter(torch.randn(4 * hidden_size, num_features))
         self.weight_hh = Parameter(torch.randn(4 * hidden_size, hidden_size))
         self.bias_ih = Parameter(torch.randn(4 * hidden_size))
         self.bias_hh = Parameter(torch.randn(4 * hidden_size))
@@ -248,7 +248,7 @@ class ProbLSTMCell(jit.ScriptModule):
 
         self.sigma = EWTrainableMuSigma([4 * hidden_size],**init_params)
 
-        #self.sigma_ih = EWTrainableMuSigma([4 * hidden_size, input_size],**init_params)
+        #self.sigma_ih = EWTrainableMuSigma([4 * hidden_size, num_features],**init_params)
         #self.sigma_hh = EWTrainableMuSigma([4 * hidden_size, hidden_size],**init_params)
 
         #self.sigma_ih = Parameter(torch.zeros_like(self.weight_ih))
@@ -285,11 +285,11 @@ class ProbLSTMCell(jit.ScriptModule):
 
 
 class LSTMCell(jit.ScriptModule):
-    def __init__(self, input_size, hidden_size):
+    def __init__(self, num_features, hidden_size):
         super().__init__()
-        self.input_size = input_size
+        self.num_features = num_features
         self.hidden_size = hidden_size
-        self.weight_ih = Parameter(torch.randn(4 * hidden_size, input_size))
+        self.weight_ih = Parameter(torch.randn(4 * hidden_size, num_features))
         self.weight_hh = Parameter(torch.randn(4 * hidden_size, hidden_size))
         self.bias_ih = Parameter(torch.randn(4 * hidden_size))
         self.bias_hh = Parameter(torch.randn(4 * hidden_size))
@@ -345,11 +345,11 @@ class LayerNorm(jit.ScriptModule):
 
 
 class LayerNormLSTMCell(jit.ScriptModule):
-    def __init__(self, input_size, hidden_size, decompose_layernorm=False):
+    def __init__(self, num_features, hidden_size, decompose_layernorm=False):
         super().__init__()
-        self.input_size = input_size
+        self.num_features = num_features
         self.hidden_size = hidden_size
-        self.weight_ih = Parameter(torch.randn(4 * hidden_size, input_size))
+        self.weight_ih = Parameter(torch.randn(4 * hidden_size, num_features))
         self.weight_hh = Parameter(torch.randn(4 * hidden_size, hidden_size))
         # The layernorms provide learnable biases
 
@@ -587,7 +587,7 @@ class MyStackedLSTMWithDropout(jit.ScriptModule):
         self, inp: Tensor # Gab removed this:  inp: Tensor, states: List[Tuple[Tensor, Tensor]]
     ) -> Tuple[Tensor, List[Tuple[Tensor, Tensor]]]:
         
-        # Gab: First, I will check batch_first, and change inp to [seq_len, batch, input_size] if necessary
+        # Gab: First, I will check batch_first, and change inp to [seq_len, batch, num_features] if necessary
         if self.batch_first:
             inp = torch.swapaxes(inp,0,1)
         shape_inp = inp.size()
@@ -635,14 +635,14 @@ def double_flatten_states(states):
     return [hidden.view([-1] + list(hidden.shape[2:])) for hidden in states]
 
 
-def test_script_rnn_layer(seq_len, batch, input_size, hidden_size):
-    inp = torch.randn(seq_len, batch, input_size)
+def test_script_rnn_layer(seq_len, batch, num_features, hidden_size):
+    inp = torch.randn(seq_len, batch, num_features)
     state = LSTMState(torch.randn(batch, hidden_size), torch.randn(batch, hidden_size))
-    rnn = LSTMLayer(LSTMCell, input_size, hidden_size)
+    rnn = LSTMLayer(LSTMCell, num_features, hidden_size)
     out, out_state = rnn(inp, state)
 
     # Control: pytorch native LSTM
-    lstm = nn.LSTM(input_size, hidden_size, 1)
+    lstm = nn.LSTM(num_features, hidden_size, 1)
     lstm_state = LSTMState(state.hx.unsqueeze(0), state.cx.unsqueeze(0))
     for lstm_param, custom_param in zip(lstm.all_weights[0], rnn.parameters()):
         assert lstm_param.shape == custom_param.shape
@@ -655,18 +655,18 @@ def test_script_rnn_layer(seq_len, batch, input_size, hidden_size):
     assert (out_state[1] - lstm_out_state[1]).abs().max() < 1e-5
 
 
-def test_script_stacked_rnn(seq_len, batch, input_size, hidden_size, num_layers):
-    inp = torch.randn(seq_len, batch, input_size)
+def test_script_stacked_rnn(seq_len, batch, num_features, hidden_size, num_layers):
+    inp = torch.randn(seq_len, batch, num_features)
     states = [
         LSTMState(torch.randn(batch, hidden_size), torch.randn(batch, hidden_size))
         for _ in range(num_layers)
     ]
-    rnn = script_lstm(input_size, hidden_size, num_layers)
+    rnn = script_lstm(num_features, hidden_size, num_layers)
     out, out_state = rnn(inp, states)
     custom_state = flatten_states(out_state)
 
     # Control: pytorch native LSTM
-    lstm = nn.LSTM(input_size, hidden_size, num_layers)
+    lstm = nn.LSTM(num_features, hidden_size, num_layers)
     lstm_state = flatten_states(states)
     for layer in range(num_layers):
         custom_params = list(rnn.parameters())[4 * layer : 4 * (layer + 1)]
@@ -681,8 +681,8 @@ def test_script_stacked_rnn(seq_len, batch, input_size, hidden_size, num_layers)
     assert (custom_state[1] - lstm_out_state[1]).abs().max() < 1e-5
 
 
-def test_script_stacked_bidir_rnn(seq_len, batch, input_size, hidden_size, num_layers):
-    inp = torch.randn(seq_len, batch, input_size)
+def test_script_stacked_bidir_rnn(seq_len, batch, num_features, hidden_size, num_layers):
+    inp = torch.randn(seq_len, batch, num_features)
     states = [
         [
             LSTMState(torch.randn(batch, hidden_size), torch.randn(batch, hidden_size))
@@ -690,12 +690,12 @@ def test_script_stacked_bidir_rnn(seq_len, batch, input_size, hidden_size, num_l
         ]
         for _ in range(num_layers)
     ]
-    rnn = script_lstm(input_size, hidden_size, num_layers, bidirectional=True)
+    rnn = script_lstm(num_features, hidden_size, num_layers, bidirectional=True)
     out, out_state = rnn(inp, states)
     custom_state = double_flatten_states(out_state)
 
     # Control: pytorch native LSTM
-    lstm = nn.LSTM(input_size, hidden_size, num_layers, bidirectional=True)
+    lstm = nn.LSTM(num_features, hidden_size, num_layers, bidirectional=True)
     lstm_state = double_flatten_states(states)
     for layer in range(num_layers):
         for direct in range(2):
@@ -713,27 +713,27 @@ def test_script_stacked_bidir_rnn(seq_len, batch, input_size, hidden_size, num_l
 
 
 def test_script_stacked_lstm_dropout(
-    seq_len, batch, input_size, hidden_size, num_layers
+    seq_len, batch, num_features, hidden_size, num_layers
 ):
-    inp = torch.randn(seq_len, batch, input_size)
+    inp = torch.randn(seq_len, batch, num_features)
     # Recall the definition above in the code: LSTMState = namedtuple("LSTMState", ["hx", "cx"])
     states = [
         LSTMState(torch.randn(batch, hidden_size), torch.randn(batch, hidden_size))
         for _ in range(num_layers)
     ]
-    rnn = script_lstm(input_size, hidden_size, num_layers, dropout=True)
+    rnn = script_lstm(num_features, hidden_size, num_layers, dropout=True)
 
     # just a smoke test
     out, out_state = rnn(inp, states)
 
 
-def test_script_stacked_lnlstm(seq_len, batch, input_size, hidden_size, num_layers):
-    inp = torch.randn(seq_len, batch, input_size)
+def test_script_stacked_lnlstm(seq_len, batch, num_features, hidden_size, num_layers):
+    inp = torch.randn(seq_len, batch, num_features)
     states = [
         LSTMState(torch.randn(batch, hidden_size), torch.randn(batch, hidden_size))
         for _ in range(num_layers)
     ]
-    rnn = script_lnlstm(input_size, hidden_size, num_layers)
+    rnn = script_lnlstm(num_features, hidden_size, num_layers)
 
     # just a smoke test
     out, out_state = rnn(inp, states)
