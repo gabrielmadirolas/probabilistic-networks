@@ -14,7 +14,7 @@ from torch import Tensor
 import torch.jit as jit
 
 
-device = torch.device("cuda:0")
+#device = torch.device("cuda:0")
 
 class TrainableSigma(nn.Module):
 
@@ -64,7 +64,7 @@ class TrainableMuSigma(nn.Module):
 	    return 'num_parameters={}'.format(self.num_parameters)
 	'''
 # Gab: New class, to have an element-wise trainable sigma
-class EWTrainableMuSigma(nn.Module):
+class EWTrainableMuSigma(jit.ScriptModule):
 
 	def __init__(self, num_parameters=1, **kwargs):
 		self.num_parameters = num_parameters

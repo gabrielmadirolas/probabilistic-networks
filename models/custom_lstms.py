@@ -234,6 +234,7 @@ class ProbLSTMCell(jit.ScriptModule):
         self.weight_hh = Parameter(torch.randn(4 * hidden_size, hidden_size))
         self.bias_ih = Parameter(torch.randn(4 * hidden_size))
         self.bias_hh = Parameter(torch.randn(4 * hidden_size))
+        #self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
         init_params = {
         'mean_mu':0.0,
@@ -260,7 +261,7 @@ class ProbLSTMCell(jit.ScriptModule):
     ) -> Tuple[Tensor, Tuple[Tensor, Tensor]]:
 
         hx, cx = state
-        #eps = torch.normal(mean = 0.0, std = 1.0, size = (hx.size(0),4*hx.size(1))).to('cuda:0')
+        #eps = torch.normal(mean = 0.0, std = 1.0, size = (hx.size(0),4*hx.size(1))).to(self.device)
         #print(eps.size())
         gates = (
             torch.mm(inp, self.weight_ih.t())
@@ -594,7 +595,10 @@ class MyStackedLSTMWithDropout(jit.ScriptModule):
         batch = shape_inp[1]
 
         # Gab: Now, I create the states 
+        device = inp.device
         states = create_states(batch, self.hidden_size, self.num_layers)
+        states = [LSTMState(i.hx.to(device), i.cx.to(device)) for i in states]
+        #states = [i.to(device) for i in states]
         # print('states in device',states[0][0].get_device())
 
         # List[LSTMState]: One state per layer
@@ -615,9 +619,9 @@ class MyStackedLSTMWithDropout(jit.ScriptModule):
 
 def create_states(batch: int, hidden_size: int, num_layers: int):
     # Cannot implement this line!
-    # device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    #device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     states = [ # Gab: Was torch.rand, but the standard is torch.zeros
-        LSTMState(torch.zeros(batch, hidden_size).to('cuda:0'), torch.zeros(batch, hidden_size).to('cuda:0'))
+        LSTMState(torch.zeros(batch, hidden_size), torch.zeros(batch, hidden_size))
         for _ in range(num_layers)
     ]
     return states
