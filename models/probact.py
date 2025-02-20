@@ -102,9 +102,9 @@ class EWTrainableMuSigma(jit.ScriptModule):
 		# this is the most general trainable activation function, which includes a trainable sigma if
 		# its paramaters alpha and beta are passed to the constructor
 		if self.alpha and self.beta:
-			return self.mu  + F.relu(x) + self.alpha*torch.sigmoid(self.beta*self.sigma) * eps
+			return self.mu + self.alpha*torch.sigmoid(self.beta*self.sigma) * eps
 		else:
-			return self.mu + F.relu(x) + self.sigma * eps
+			return self.mu + self.sigma * eps
 
 		#return x
 		#return F.relu(x)

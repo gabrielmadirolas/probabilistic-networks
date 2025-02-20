@@ -101,8 +101,8 @@ class ProbLSTMCell(jit.ScriptModule):
         init_params = {
         'mean_mu':0.0,
         'std_mu':0.0,
-        'mean_sigma':0.0,
-        'std_sigma':0.5,
+        'mean_sigma':0.5,
+        'std_sigma':0.1,
         # to use a sigmoid for sigma, set the two following to diffrent than 0.0
         # Both are set as non-trainable in the probact.py file
         'alpha':0.0, # must not be integer
@@ -203,48 +203,6 @@ def init_stacked_lstm(num_layers, layer, first_layer_args, other_layer_args):
         layer(*other_layer_args) for _ in range(num_layers - 1)
     ]
     return nn.ModuleList(layers)
-
-
-class StackedLSTMWithDropout(jit.ScriptModule):
-    # Necessary for iterating through self.layers and dropout support
-    __constants__ = ["layers", "num_layers"]
-
-    def __init__(self, num_layers, layer, first_layer_args, other_layer_args):
-        super().__init__()
-        self.layers = init_stacked_lstm(
-            num_layers, layer, first_layer_args, other_layer_args
-        )
-        # Introduces a Dropout layer on the outputs of each LSTM layer except
-        # the last layer, with dropout probability = 0.4.
-        self.num_layers = num_layers
-
-        if num_layers == 1:
-            warnings.warn(
-                "dropout lstm adds dropout layers after all but last "
-                "recurrent layer, it expects num_layers greater than "
-                "1, but got num_layers = 1"
-            )
-
-        self.dropout_layer = nn.Dropout(0.4)
-
-    @jit.script_method
-    def forward(
-        self, inp: Tensor, states: List[Tuple[Tensor, Tensor]]
-    ) -> Tuple[Tensor, List[Tuple[Tensor, Tensor]]]:
-        # List[LSTMState]: One state per layer
-        output_states = jit.annotate(List[Tuple[Tensor, Tensor]], [])
-        output = inp
-        # XXX: enumerate https://github.com/pytorch/pytorch/issues/14471
-        i = 0
-        for rnn_layer in self.layers:
-            state = states[i]
-            output, out_state = rnn_layer(output, state)
-            # Apply the dropout layer except the last layer
-            if i < self.num_layers - 1:
-                output = self.dropout_layer(output)
-            output_states += [out_state]
-            i += 1
-        return output, output_states
 
 
 class MyStackedLSTMWithDropout(jit.ScriptModule):
