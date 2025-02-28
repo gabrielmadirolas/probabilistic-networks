@@ -3,3 +3,5 @@ models/.ipynb_checkpoints/
 models/__pycache__/
 models/custom_lstms_nojit.py
 models/probact_nojit.py
+models/custom_lstms_jit.py
+models/probact_jit.py
