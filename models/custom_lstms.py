@@ -6,7 +6,7 @@ https://github.com/pytorch/pytorch/blob/main/benchmarks/fastrnns/custom_lstms.py
 import numbers
 import warnings
 from collections import namedtuple
-from typing import List, Tuple
+from typing import List, Tuple, Final
 
 import torch
 import torch.jit as jit
@@ -87,7 +87,7 @@ def my_lstm(
 LSTMState = namedtuple("LSTMState", ["hx", "cx"])
 
 
-class ProbLSTMCell(jit.ScriptModule):
+class ProbLSTMCell(nn.Module):
     def __init__(self, num_features, hidden_size):
         super().__init__()
         self.num_features = num_features
@@ -117,7 +117,6 @@ class ProbLSTMCell(jit.ScriptModule):
         #self.sigma_ih = Parameter(torch.zeros_like(self.weight_ih))
         #self.sigma_hh = Parameter(torch.zeros_like(self.weight_hh))
 
-    @jit.script_method
     def forward(
         self, inp: Tensor, state: Tuple[Tensor, Tensor]
     ) -> Tuple[Tensor, Tuple[Tensor, Tensor]]:
@@ -147,7 +146,7 @@ class ProbLSTMCell(jit.ScriptModule):
         return hy, (hy, cy)
 
 
-class LSTMCell(jit.ScriptModule):
+class LSTMCell(nn.Module):
     def __init__(self, num_features, hidden_size):
         super().__init__()
         self.num_features = num_features
@@ -157,7 +156,6 @@ class LSTMCell(jit.ScriptModule):
         self.bias_ih = Parameter(torch.randn(4 * hidden_size))
         self.bias_hh = Parameter(torch.randn(4 * hidden_size))
 
-    @jit.script_method
     def forward(
         self, inp: Tensor, state: Tuple[Tensor, Tensor]
     ) -> Tuple[Tensor, Tuple[Tensor, Tensor]]:
@@ -181,17 +179,16 @@ class LSTMCell(jit.ScriptModule):
         return hy, (hy, cy)
 
 
-class LSTMLayer(jit.ScriptModule):
+class LSTMLayer(nn.Module):
     def __init__(self, cell, *cell_args):
         super().__init__()
         self.cell = cell(*cell_args)
 
-    @jit.script_method
     def forward(
         self, inp: Tensor, state: Tuple[Tensor, Tensor]
     ) -> Tuple[Tensor, Tuple[Tensor, Tensor]]:
         inputs = inp.unbind(0)
-        outputs = torch.jit.annotate(List[Tensor], [])
+        outputs: List[Tensor] = []
         for i in range(len(inputs)):
             out, state = self.cell(inputs[i], state)
             outputs += [out]
@@ -205,9 +202,11 @@ def init_stacked_lstm(num_layers, layer, first_layer_args, other_layer_args):
     return nn.ModuleList(layers)
 
 
-class MyStackedLSTMWithDropout(jit.ScriptModule):
+class MyStackedLSTMWithDropout(nn.Module):
     # Necessary for iterating through self.layers and dropout support
-    __constants__ = ["layers", "num_layers"]
+    # __constants__ = ["layers", "num_layers"] # change to Final, for use with torch.compile:
+    layers: Final[nn.ModuleList]
+    num_layers: Final[int]
 
     def __init__(self, num_layers, layer, batch_first, dropout,
                  first_layer_args, other_layer_args):
@@ -234,7 +233,6 @@ class MyStackedLSTMWithDropout(jit.ScriptModule):
         print('dropout',dropout)
         self.dropout_layer = nn.Dropout(dropout)
 
-    @jit.script_method
     def forward(
         self, inp: Tensor # Gab removed this:  inp: Tensor, states: List[Tuple[Tensor, Tensor]]
     ) -> Tuple[Tensor, List[Tuple[Tensor, Tensor]]]:
@@ -253,7 +251,7 @@ class MyStackedLSTMWithDropout(jit.ScriptModule):
         # print('states in device',states[0][0].get_device())
 
         # List[LSTMState]: One state per layer
-        output_states = jit.annotate(List[Tuple[Tensor, Tensor]], [])
+        output_states: List[Tuple[Tensor, Tensor]] = []
         output = inp
         # XXX: enumerate https://github.com/pytorch/pytorch/issues/14471
         i = 0
