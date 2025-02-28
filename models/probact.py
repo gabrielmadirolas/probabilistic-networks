@@ -35,9 +35,6 @@ class TrainableSigma(nn.Module):
 
 		return F.relu(mu) + self.sigma * eps
 
-	def extra_repr(self):
-	    return 'num_parameters={}'.format(self.num_parameters)
-
 # Gab: new class to train a global mu as well
 class TrainableMuSigma(nn.Module):
 
@@ -59,12 +56,9 @@ class TrainableMuSigma(nn.Module):
 			eps = torch.FloatTensor(x.size()).normal_(mean = 0, std = 1)
 
 		return  self.mu + F.relu(x) + self.sigma * eps
-	''' # Gab: commented this function, don't know what it does and when it is supposed to be used
-	def extra_repr(self):
-	    return 'num_parameters={}'.format(self.num_parameters)
-	'''
+	
 # Gab: New class, to have an element-wise trainable sigma
-class EWTrainableMuSigma(jit.ScriptModule):
+class EWTrainableMuSigma(nn.module):
 
 	def __init__(self, num_parameters=1, **kwargs):
 		self.num_parameters = num_parameters
@@ -82,7 +76,6 @@ class EWTrainableMuSigma(jit.ScriptModule):
 		self.alpha = kwargs["alpha"]
 		self.beta = kwargs["beta"]
 
-	@jit.script_method	
 	def forward(self, x: Tensor) -> Tensor:
 		'''
 		mu = x
@@ -119,6 +112,3 @@ class EWTrainableMuSigma(jit.ScriptModule):
 		#return F.relu(x) + self.alpha*torch.sigmoid(self.beta*self.sigma) * eps
 		#return self.mu + x + self.alpha*torch.sigmoid(self.beta*self.sigma) * eps
 		#return self.mu + x + torch.abs(self.sigma) * eps
-		
-	def extra_repr(self):
-	    return 'num_parameters={}'.format(self.num_parameters)
