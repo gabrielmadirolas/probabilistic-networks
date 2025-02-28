@@ -58,7 +58,7 @@ class TrainableMuSigma(nn.Module):
 		return  self.mu + F.relu(x) + self.sigma * eps
 	
 # Gab: New class, to have an element-wise trainable sigma
-class EWTrainableMuSigma(nn.module):
+class EWTrainableMuSigma(nn.Module):
 
 	def __init__(self, num_parameters=1, **kwargs):
 		self.num_parameters = num_parameters
