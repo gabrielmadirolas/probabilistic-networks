@@ -9,12 +9,12 @@ from collections import namedtuple
 from typing import List, Tuple, Final
 
 import torch
-import torch.jit as jit
+# import torch.jit as jit
 import torch.nn as nn
 from torch import Tensor
 from torch.nn import Parameter
 
-from .probact import EWTrainableMuSigma 
+from models.probact import EWTrainableMuSigma 
 
 
 """
@@ -45,7 +45,8 @@ def prob_lstm(
     hidden_size,
     num_layers,
     batch_first=False,
-    dropout=0.1
+    dropout=0.1,
+    prob_params={}
 ):
     """Returns a ScriptModule that mimics a PyTorch native LSTM."""
 
@@ -56,8 +57,8 @@ def prob_lstm(
         layer_type,
         batch_first,
         dropout,
-        first_layer_args=[ProbLSTMCell, num_features, hidden_size],
-        other_layer_args=[ProbLSTMCell, hidden_size, hidden_size],
+        first_layer_args=[ProbLSTMCell, num_features, hidden_size, prob_params],
+        other_layer_args=[ProbLSTMCell, hidden_size, hidden_size, prob_params],
     )
 
 
@@ -88,7 +89,7 @@ LSTMState = namedtuple("LSTMState", ["hx", "cx"])
 
 
 class ProbLSTMCell(nn.Module):
-    def __init__(self, num_features, hidden_size):
+    def __init__(self, num_features, hidden_size, prob_params):
         super().__init__()
         self.num_features = num_features
         self.hidden_size = hidden_size
@@ -98,18 +99,22 @@ class ProbLSTMCell(nn.Module):
         self.bias_hh = Parameter(torch.randn(4 * hidden_size))
         #self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-        init_params = {
+        self.prob_params = {
         'mean_mu':0.0,
         'std_mu':0.0,
-        'mean_sigma':0.5,
-        'std_sigma':0.1,
+        'mean_sigma':0.0,
+        'std_sigma':0.0,
         # to use a sigmoid for sigma, set the two following to diffrent than 0.0
         # Both are set as non-trainable in the probact.py file
         'alpha':0.0, # must not be integer
         'beta':0.0 # must not be integer
         }
-
-        self.sigma = EWTrainableMuSigma([4 * hidden_size],**init_params)
+        
+        for k, v in prob_params.items():
+            if k in self.prob_params:
+                self.prob_params[k] = v
+        
+        self.sigma = EWTrainableMuSigma([4 * hidden_size],self.prob_params)
 
         #self.sigma_ih = EWTrainableMuSigma([4 * hidden_size, num_features],**init_params)
         #self.sigma_hh = EWTrainableMuSigma([4 * hidden_size, hidden_size],**init_params)
@@ -131,7 +136,7 @@ class ProbLSTMCell(nn.Module):
             + self.bias_hh
         )
         gates_NAME = gates + self.sigma(gates)
-        #print(self.sigma(gates).size())
+        #print(self.sigma(gates).size()) # gives [4*hidden_size, batch_size]
         #print(self.sigma(gates).mean())
         ingate, forgetgate, cellgate, outgate = gates_NAME.chunk(4, 1)
 
@@ -230,7 +235,7 @@ class MyStackedLSTMWithDropout(nn.Module):
             )
 
         self.batch_first = batch_first
-        print('dropout',dropout)
+        print('LSTM dropout',dropout)
         self.dropout_layer = nn.Dropout(dropout)
 
     def forward(

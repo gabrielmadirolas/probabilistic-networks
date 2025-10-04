@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import Parameter
 from torch import Tensor
-import torch.jit as jit
+# import torch.jit as jit
 
 
 #device = torch.device("cuda:0")
@@ -35,9 +35,6 @@ class TrainableSigma(nn.Module):
 
 		return F.relu(mu) + self.sigma * eps
 
-	def extra_repr(self):
-	    return 'num_parameters={}'.format(self.num_parameters)
-
 # Gab: new class to train a global mu as well
 class TrainableMuSigma(nn.Module):
 
@@ -59,31 +56,27 @@ class TrainableMuSigma(nn.Module):
 			eps = torch.FloatTensor(x.size()).normal_(mean = 0, std = 1)
 
 		return  self.mu + F.relu(x) + self.sigma * eps
-	''' # Gab: commented this function, don't know what it does and when it is supposed to be used
-	def extra_repr(self):
-	    return 'num_parameters={}'.format(self.num_parameters)
-	'''
-
+	
 # Gab: New class, to have an element-wise trainable sigma
 class EWTrainableMuSigma(nn.Module):
 
-	def __init__(self, num_parameters=1, **kwargs):
-		self.num_parameters = num_parameters
-		self.init_params = kwargs
+	def __init__(self, num_parameters, prob_params):
+		#self.num_parameters = num_parameters
+		#self.prob_params = prob_params
 		super(EWTrainableMuSigma, self).__init__()
 		#self.mu = Parameter(torch.mul(torch.ones(tuple(num_parameters)),init_sigma))
-		if kwargs["std_mu"]:
-			self.mu = Parameter(torch.empty(tuple(num_parameters)).normal_(mean=kwargs["mean_mu"], std=kwargs["std_mu"]))
+		if prob_params["std_mu"]:
+			self.mu = Parameter(torch.empty(tuple(num_parameters)).normal_(mean=prob_params["mean_mu"], std=prob_params["std_mu"]))
 		else:
-			self.mu = kwargs["mean_mu"]	
-		self.sigma = Parameter(torch.empty(tuple(num_parameters)).normal_(mean=kwargs["mean_sigma"], std=kwargs["std_sigma"]))
+			self.mu = prob_params["mean_mu"]	
+		self.sigma = Parameter(torch.empty(tuple(num_parameters)).normal_(mean=prob_params["mean_sigma"], std=prob_params["std_sigma"]))
 		#self.sigma = Parameter(torch.Tensor(num_parameters).fill_(init_sigma))
 		#self.alpha = Parameter(torch.tensor(kwargs["alpha"]))
 		#self.beta = Parameter(torch.tensor(kwargs["beta"]))
-		self.alpha = kwargs["alpha"]
-		self.beta = kwargs["beta"]
+		self.alpha = prob_params["alpha"]
+		self.beta = prob_params["beta"]
+		print("sigma requires grad",self.sigma.requires_grad)
 
-	#@jit.script_method	
 	def forward(self, x: Tensor) -> Tensor:
 		'''
 		mu = x
@@ -103,7 +96,7 @@ class EWTrainableMuSigma(nn.Module):
 		# this is the most general trainable activation function, which includes a trainable sigma if
 		# its paramaters alpha and beta are passed to the constructor
 		if self.alpha and self.beta:
-			return self.mu + self.alpha * torch.sigmoid(self.beta*self.sigma) * eps
+			return self.mu + self.alpha*torch.sigmoid(self.beta*self.sigma) * eps
 		else:
 			return self.mu + self.sigma * eps
 
@@ -120,6 +113,3 @@ class EWTrainableMuSigma(nn.Module):
 		#return F.relu(x) + self.alpha*torch.sigmoid(self.beta*self.sigma) * eps
 		#return self.mu + x + self.alpha*torch.sigmoid(self.beta*self.sigma) * eps
 		#return self.mu + x + torch.abs(self.sigma) * eps
-		
-	def extra_repr(self):
-	    return 'num_parameters={}'.format(self.num_parameters)
