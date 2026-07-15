@@ -208,3 +208,224 @@
   10. Address portability after baselining. Replace hard-coded cuda:0 allocation with the input/device-aware equivalent, preserving random-number semantics as closely as tests permit.
   11. Add lightweight project metadata. Declare supported Python/PyTorch dependencies and a reproducible environment, but avoid imposing a heavy framework or rewriting the notebook
      workflow.
+
+## Target architecture
+
+```text
+prob_project/
+├── probact/                         # Lightweight research package
+│   ├── activations/
+│   │   ├── base.py                  # ProbabilisticActivation protocol/base API
+│   │   ├── gaussian.py              # Gaussian additive-noise variants
+│   │   ├── parameterizations.py     # Global / element-wise / fixed / trainable scales
+│   │   └── constraints.py           # Identity, softplus, bounded-sigmoid transforms
+│   ├── models/
+│   │   ├── cells.py                 # Standard and probabilistic LSTM cells
+│   │   ├── recurrent.py             # Stacked recurrent wrappers
+│   │   ├── heads.py                 # Regression/classification readout heads
+│   │   └── factories.py             # Architecture construction from config
+│   ├── data/
+│   │   ├── base.py                  # Dataset/task protocol
+│   │   ├── timeseries.py            # Windowing and forecasting datasets
+│   │   ├── tabular.py               # Future task-specific datasets
+│   │   └── registry.py              # Named dataset builders
+│   ├── training/
+│   │   ├── loops.py                 # Small, explicit train/eval loops
+│   │   ├── metrics.py               # Task metrics
+│   │   ├── checkpointing.py         # Backward-compatible checkpoint I/O
+│   │   └── reproducibility.py       # Seeding and run metadata
+│   ├── experiments/
+│   │   ├── config.py                # Dataclass experiment configuration
+│   │   ├── runner.py                # Programmatic experiment entry point
+│   │   └── analysis.py              # Parameter and uncertainty summaries
+│   └── tests/
+│       ├── test_activations.py
+│       ├── test_cells.py
+│       ├── test_data.py
+│       └── test_checkpoints.py
+├── notebooks/
+│   ├── airline_probabilistic_lstm.ipynb
+│   ├── activation_ablation.ipynb
+│   └── checkpoint_analysis.ipynb
+├── configs/
+│   ├── airline_lstm_baseline.yaml
+│   └── airline_lstm_probact.yaml
+├── data/
+├── checkpoints/
+└── README.md
+```
+
+This is intentionally a small research package, not an enterprise training platform. The notebook remains the interactive front end; the package owns reusable scientific logic.
+
+## Core abstraction: probabilistic activations
+
+```python
+class ProbabilisticActivation(nn.Module):
+    def forward(self, x: Tensor) -> Tensor:
+        ...
+```
+
+A probabilistic activation should be an independently usable `nn.Module`, rather than being embedded only inside an LSTM. This enables direct use in MLPs, CNNs, Transformers, recurrent cells, or custom architectures.
+
+A Gaussian additive formulation could be represented conceptually as:
+
+```text
+output = deterministic_component(x) + location + scale * noise
+```
+
+where each component is selectable:
+
+| Concern | Examples | Reason |
+|---|---|---|
+| Deterministic component | identity, ReLU, tanh | Supports the active LSTM behavior and historical variants without copying implementations. |
+| Location | fixed zero, global trainable scalar, element-wise trainable vector | Makes mean-shift experiments explicit. |
+| Scale | fixed scalar, global trainable scalar, element-wise trainable vector | Directly supports the intended parameterization studies. |
+| Scale constraint | unconstrained, absolute, softplus, bounded sigmoid | Separates the scientific decision about variance parameterization from noise sampling. |
+| Noise distribution | standard Gaussian initially; extensible later | Keeps the initial framework focused while leaving a clean extension point. |
+| Evaluation mode | sampled, deterministic mean, Monte Carlo | Makes stochastic evaluation an explicit experimental choice. |
+
+The key design decision is composition rather than a proliferation of classes such as `GlobalTrainableBoundedGaussianActivation`. A small activation object can receive a location parameterization, a scale parameterization, and a constraint. This makes ablations precise and avoids duplicating sampling code.
+
+## Model architecture
+
+`models/` should contain architecture-specific integration points, not copies of activation mathematics.
+
+```text
+ProbabilisticActivation
+        │
+        ├── ProbabilisticLSTMCell
+        │     └── inject into selected gate preactivations
+        ├── ProbabilisticMLP
+        │     └── insert between linear layers
+        └── future architectures
+              └── choose explicit insertion points
+```
+
+For recurrent models, the LSTM cell should accept an activation/noise module and an explicit injection policy:
+
+```python
+ProbabilisticLSTMCell(
+    input_size=...,
+    hidden_size=...,
+    gate_activation=activation,
+    inject_into=("input", "forget", "cell", "output"),
+)
+```
+
+This preserves the current research mechanism—noise added to all four gate preactivations—while allowing meaningful experiments such as perturbing only candidate-cell gates or only recurrent contributions. Injection location must be part of the experiment configuration and checkpoint metadata because it is scientifically consequential.
+
+A model factory can build a baseline PyTorch model or a custom probabilistic model from configuration. This makes baseline-versus-ProbAct comparisons use identical dataset, optimizer, metric, and checkpoint workflows.
+
+## Dataset and task design
+
+Use a minimal dataset-builder protocol:
+
+```python
+class TaskData:
+    train_loader
+    validation_loader
+    test_loader
+    task_type       # regression, classification, forecasting
+    input_shape
+    output_shape
+```
+
+Each dataset module should return `TaskData` plus task metadata. For example, the airline dataset builder owns chronological splitting, sliding windows, target construction, and plotting coordinates.
+
+This separates task semantics from experiment code. It allows a notebook to switch from airline forecasting to another time-series, tabular regression, or classification task by changing one configuration field, while avoiding a large dataset framework.
+
+The existing shifted-window target should remain as a named forecasting mode, alongside a future final-step-only forecast mode. They should not silently replace one another because they produce different training objectives.
+
+## Configuration and experiment runs
+
+Use nested dataclasses in Python, optionally serialized to YAML:
+
+```text
+ExperimentConfig
+├── data
+│   ├── name
+│   ├── split
+│   └── task-specific options
+├── model
+│   ├── architecture
+│   ├── hidden size / layers / dropout
+│   └── probabilistic injection policy
+├── activation
+│   ├── distribution
+│   ├── location parameterization
+│   ├── scale parameterization
+│   ├── scale constraint
+│   └── evaluation sampling mode
+├── optimizer
+├── training
+└── reproducibility
+```
+
+Configuration should be plain and inspectable, rather than relying on a heavyweight configuration framework. A dataclass gives notebooks autocomplete and validation; YAML gives repeatable named runs and easy diffs.
+
+Every run should save its resolved configuration beside checkpoints. This directly addresses the current inability to reconstruct an experiment from model weights alone.
+
+## Training, evaluation, and uncertainty
+
+Keep training loops explicit and task-agnostic:
+
+```text
+TaskData + model + optimizer + loss
+  → train_epoch()
+  → evaluate(sample_mode="sample" | "mean" | "monte_carlo")
+  → checkpoint()
+```
+
+The existing single-sample behavior should be retained as a valid mode for historical comparison. A Monte Carlo mode should additionally report predictive mean, predictive spread, and uncertainty-aware metrics where appropriate. This is important because probabilistic activations make ordinary one-pass RMSE an incomplete description of behavior.
+
+The framework should not introduce a generic “trainer” hierarchy. A few small functions make scientific assumptions visible in notebooks and are easier to adapt during research.
+
+## Checkpoint architecture
+
+New checkpoints should be structured dictionaries:
+
+```text
+{
+  "format_version": ...,
+  "model_state": ...,
+  "optimizer_state": ...,
+  "epoch": ...,
+  "config": ...,
+  "metrics": ...,
+  "rng_state": ...,
+}
+```
+
+A compatibility loader should support the existing bare state dictionaries and normalize compiled-model prefixes such as `_orig_mod.`. This preserves the current 21 checkpoints while allowing future experiments to be resumed and interpreted reliably.
+
+Checkpoint analysis should operate on model objects or normalized state dictionaries, not hard-coded parameter strings. It can then report any activation’s location/scale statistics consistently across architectures.
+
+## Notebook role
+
+Notebooks should remain first-class experiment records:
+
+```text
+notebook
+  → select/load config
+  → construct dataset and model
+  → run experiment helpers
+  → inspect plots, checkpoints, and ablations
+```
+
+They should retain narrative, plots, exploratory diagnostics, and one-off hypothesis tests. Reusable functions should move into the package only after they have stabilized.
+
+This retains the repository’s research workflow while preventing notebook cell order, globals, and scratch code from becoming hidden framework requirements.
+
+## Testing boundary
+
+Tests should protect scientific invariants, not over-constrain exploration:
+
+- deterministic custom LSTM matches an equivalent reference LSTM where expected;
+- each activation parameterization has the intended parameter shape and trainability;
+- sampled output shape/device behavior is correct;
+- fixed seeds give controlled regression behavior;
+- data-window and split semantics remain stable;
+- legacy checkpoints load successfully;
+- baseline and probabilistic model factories produce compatible output shapes.
+
+The most important target is a framework where a new experiment means selecting a dataset, architecture, activation parameterization, and evaluation mode—not copying an LSTM implementation or rewriting a training notebook.
