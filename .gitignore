@@ -1,5 +1,6 @@
 .ipynb_checkpoints/
 models/.ipynb_checkpoints/
+checkpoints_colab/
 models/__pycache__/
 models/custom_lstms_nojit.py
 models/probact_nojit.py

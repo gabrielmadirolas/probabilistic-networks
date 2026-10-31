@@ -1,0 +1,53 @@
+# Probabilistic networks
+
+This repository is a small research project around a custom PyTorch LSTM with probabilistic gate offsets. The current training example forecasts monthly airline passenger counts from `data/airline_passengers.csv`.
+
+## Run the training notebook in Google Colab
+
+The Colab notebook is [`colab_train.ipynb`](colab_train.ipynb). It clones the model code and CSV from the `development` branch, uses whichever device Colab assigned, and saves checkpoints to Google Drive so a later runtime can resume training.
+
+### 1. Push the development branch once
+
+Colab can only access branches that exist on GitHub. From the repository on your computer, save the notebook and guide in a commit, then push the branch:
+
+```bash
+git add README.md .gitignore colab_train.ipynb analyze_model.ipynb
+git commit -m "Add Colab training workflow"
+git push -u origin development
+```
+
+This publishes the current local `development` branch. The `main` branch remains the original baseline.
+
+### 2. Open the notebook
+
+After the push completes, open [the Colab training notebook](https://colab.research.google.com/github/gabrielmadirolas/probabilistic-networks/blob/development/colab_train.ipynb). Sign in to Colab if prompted.
+
+### 3. Choose a GPU if one is offered
+
+In Colab, choose **Runtime → Change runtime type → GPU**, then save. The GPU model and availability vary; the notebook prints the device it receives. If no GPU is available, it falls back to CPU.
+
+### 4. Run the notebook
+
+Choose **Runtime → Run all**. The first setup cell clones only `models/` and `data/` from the branch, avoiding the repository's historical checkpoint files. It then asks you to connect Google Drive. Approve that prompt if you want checkpoints saved there.
+
+The standard Colab runtime already includes the libraries used here; the notebook does not reinstall PyTorch, which avoids replacing Colab's CUDA-enabled build.
+
+### Resuming or starting another run
+
+- The first run starts at epoch 0 and saves model weights every 500 epochs under `My Drive/probabilistic-networks/colab_runs/airline_probact_run_01`.
+- If Colab disconnects, reopen the notebook, keep the same `RUN_NAME`, and run all cells again. It resumes from the most recent saved model and optimizer state.
+- To train longer, increase `TOTAL_EPOCHS` and keep the same `RUN_NAME`.
+- To start a separate run, change `RUN_NAME`. The notebook will not delete an existing run's checkpoints.
+- `USE_TORCH_COMPILE` is off by default for a simpler first run. It can be enabled later if you want to experiment with compilation.
+
+The saved model files can be analyzed separately; `latest_training_state.pt` also stores the optimizer state used for resuming.
+
+## Repository contents
+
+- `models/custom_lstms.py` implements the custom LSTM cells and stacked recurrent layers.
+- `models/probact.py` implements trainable mean and scale parameters for Gaussian gate noise.
+- `passengers_LSTM_ProbAct.ipynb` is the original research notebook, including exploratory Python cells.
+- `colab_train.ipynb` is the focused, resumable Colab training path.
+- `analyze_model.ipynb` inspects both the original checkpoints and the checkpoints produced in the Colab Drive folder. When run in Colab, it mounts Drive and reads `airline_probact_run_01` by default.
+
+Colab's free compute is subject to changing resource limits, and GPU access is not guaranteed. Runtime files are temporary, which is why this training notebook stores checkpoints in Drive. See [Colab's FAQ](https://research.google.com/colaboratory/faq.html) for current details.
