@@ -78,20 +78,7 @@ class EWTrainableMuSigma(nn.Module):
 		print("sigma requires grad",self.sigma.requires_grad)
 
 	def forward(self, x: Tensor) -> Tensor:
-		'''
-		mu = x
-
-		if mu.is_cuda:
-			eps = torch.cuda.FloatTensor(mu.size()).normal_(mean = 0, std = 1)
-		else:
-			eps = torch.FloatTensor(mu.size()).normal_(mean = 0, std = 1)
-		'''
-		if self.sigma.is_cuda:
-			#eps = torch.cuda.FloatTensor(x.size()).normal_(mean = 0, std = 1)
-			eps = torch.normal(mean = 0.0, std = 1.0, size = (x.size(0),x.size(1))).to('cuda:0')
-		else:
-			#eps = torch.FloatTensor(x.size()).normal_(mean = 0, std = 1)
-			eps = torch.normal(mean = 0.0, std = 1.0, size = (x.size(0),x.size(1)))
+		eps = torch.randn_like(x)
 
 		# this is the most general trainable activation function, which includes a trainable sigma if
 		# its paramaters alpha and beta are passed to the constructor
