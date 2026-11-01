@@ -37,8 +37,11 @@ The standard Colab runtime already includes the libraries used here; the noteboo
 - The first run starts at epoch 0 and saves model weights every 500 epochs under `My Drive/probabilistic-networks/colab_runs/airline_probact_run_01`.
 - If Colab disconnects, reopen the notebook, keep the same `RUN_NAME`, and run all cells again. It resumes from the most recent saved model and optimizer state.
 - To train longer, increase `TOTAL_EPOCHS` and keep the same `RUN_NAME`.
-- To start a separate run, change `RUN_NAME`. The notebook will not delete an existing run's checkpoints.
+- To start a separate run, change `RUN_NAME`.
+- To restart the same run from scratch, set `RESUME_TRAINING=False`. Before training, the notebook deletes that run's saved model checkpoints, latest training state, and temporary checkpoint files from its run directory. Keep it `True` to resume.
 - `USE_TORCH_COMPILE` is off by default for a simpler first run. It can be enabled later if you want to experiment with compilation.
+
+In `passengers_LSTM_ProbAct.ipynb`, `resume=True` continues from the latest file matching `saved_models_path`; `resume=False` deletes those matching model files and starts a fresh run.
 
 The saved model files can be analyzed separately; `latest_training_state.pt` also stores the optimizer state used for resuming.
 
