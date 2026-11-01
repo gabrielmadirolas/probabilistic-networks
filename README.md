@@ -50,4 +50,47 @@ The saved model files can be analyzed separately; `latest_training_state.pt` als
 - `colab_train.ipynb` is the focused, resumable Colab training path.
 - `analyze_model.ipynb` inspects both the original checkpoints and the checkpoints produced in the Colab Drive folder. When run in Colab, it mounts Drive and reads `airline_probact_run_01` by default.
 
+## Experiment controls
+
+Both training notebooks expose the recurrent architecture and probabilistic
+settings near the model configuration cell. `hidden_size`, `n_LSTM`,
+`bidirectional`, `proj_size`, `dropout`, and `batch_first` control the custom
+LSTM architecture. `proj_size=0` disables projection; otherwise it must be
+smaller than `hidden_size`. The model accepts optional `(h_0, c_0)` states and
+returns `(output, (h_n, c_n))`; with `batch_first=True`, output is
+`[batch, sequence, features]`.
+
+The probabilistic controls are:
+
+- `probabilistic_sharing="per_node"`: one mean/scale per LSTM gate and hidden
+  node, independently for each layer and direction (the current default).
+- `probabilistic_sharing="per_layer"`: one learned mean/scale shared by all
+  gates, nodes, and directions in each layer.
+- `probabilistic_sharing="per_network"`: one learned mean/scale shared across
+  all recurrent layers and directions.
+- `noise_distribution="normal"` or `"uniform"`: choose Gaussian or
+  variance-matched uniform noise.
+- `noise_location="pre_activation"` or `"post_activation"`: perturb the gate
+  values before or after sigmoid/tanh. Post-activation noise can move sigmoid
+  gate values outside `[0, 1]`, which is useful to test but changes standard
+  LSTM gate semantics.
+- `sample_mode="train_only"`, `"always"`, or `"never"`: control whether random
+  samples are used during evaluation. The default keeps evaluation
+  deterministic; use `"always"` for Monte Carlo evaluation.
+- `train_mu` and `train_sigma`: control whether the mean offset and scale are
+  learned. `prob_params` continues to set their initialization, including
+  `mean_mu`, `std_mu`, `mean_sigma`, and `std_sigma`.
+- Learned scales use softplus so they remain positive and can still move when
+  initialized at zero. Legacy model weights are converted automatically when
+  loaded. Resuming a checkpoint created before this scale change starts with a
+  fresh optimizer, because its saved optimizer moments use the old parameter
+  coordinates.
+
+The non-probabilistic `custom_lstms.my_lstm(...)` factory supports the same
+layer, direction, projection, and state conventions for a baseline. The custom
+Python time-step loop makes gate experiments possible but can be slower than
+PyTorch's fused LSTM kernels on long sequences; the short sequences in the
+airline notebook keep that tradeoff modest. `torch.compile` remains an optional
+experiment, not a requirement.
+
 Colab's free compute is subject to changing resource limits, and GPU access is not guaranteed. Runtime files are temporary, which is why this training notebook stores checkpoints in Drive. See [Colab's FAQ](https://research.google.com/colaboratory/faq.html) for current details.
